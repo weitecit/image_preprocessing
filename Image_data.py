@@ -25,15 +25,29 @@ class Relevant_metadata:
         self.datetime = datetime.strptime(str(self.exif['EXIF DateTimeOriginal']), "%Y:%m:%d %H:%M:%S")
         self.image_type = get_image_type(self.camera_model)
 
+        self.sunshine = None
+        self.model = None
         if(self.camera_model=='Sequoia'):
             self.model = self.xmp['Camera:SensorModel']['rdf:Seq']['rdf:li'].split(',')
             self.model = [float(x) for x in self.model]
 
-            self.sunshine = None
             if process_sunshine:
                 self.sunshine = get_sunshine(self.xmp)
-
-
+    def as_dict(self):
+        return {
+            'camera_model': self.camera_model,
+            'exposure_time': self.exposure_time,
+            'f_number': self.f_number,
+            'iso': self.iso,
+            'position': self.position,
+            'altitude': self.altitude,
+            'datetime': self.datetime,
+            'image_type': self.image_type,
+            'sunshine': self.sunshine,
+            'path': self.path,
+            'image_type': self.image_type,
+            'model': self.model
+        }
 def get_xmp(file):
     img_bytes = file.read()
     xmp_start = img_bytes.find(b'<x:xmpmeta')
