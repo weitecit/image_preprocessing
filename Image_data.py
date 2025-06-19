@@ -100,7 +100,7 @@ def get_gps_values(exif):
     if str(exif['GPS GPSLongitudeRef']) == 'W' or str(exif['GPS GPSLongitudeRef']) == 'West':
         longitude = -longitude
 
-    return latitude, longitude
+    return longitude, latitude
 
 def get_image_type(camera_model):
 
