@@ -79,6 +79,7 @@ def detect_fields_and_divide(image_folder:str, out_folder:str, buffer_size:float
         metadata = Relevant_metadata(os.path.join(image_folder, image), process_sunshine=False)
         position = metadata.position
 
+        #tranform coordinates and intersect
         x, y = tr.transform(position[0], position[1])
         tr_point = Point(x, y)
        
@@ -96,8 +97,8 @@ def detect_fields_and_divide(image_folder:str, out_folder:str, buffer_size:float
             if not os.path.exists(os.path.join(out_folder, new_folder_name)):
                 os.makedirs(os.path.join(out_folder, new_folder_name))
             out_image = os.path.join(out_folder, new_folder_name, image)
-            shutil.copyfile(source_image, out_image)
-            
+            shutil.copy2(source_image, out_image)
+
     print(f'Images out of bounds: {len(images_out_of_bounds)}')
     return images_out_of_bounds
 
