@@ -61,10 +61,21 @@ def detect_fields_and_divide(image_folder, out_folder):
         else:
             print(f'No plot found for {image}')
 
+def select_unique_multispectral_images(image_list):
+    main_names = []
+    last_name = ""
+    for image in image_list:
+        unique_name = "_".join(image.split('_')[:-1])
+        if unique_name != last_name:
+            last_name = unique_name
+            main_names.append(image)
+
+    return main_names
+
 
 
 if __name__ == '__main__':
-    source_folder = r"C:\Users\Daniel_Arcos\Desktop\0001"
+    source_folder = r"C:\Users\Daniel_Arcos\Desktop\DJI_202506091548_174_Agricultura-agriauto-cabrera"
     out_folder = r"C:\Users\Daniel_Arcos\Desktop\out_folder"
 
     detect_fields_and_divide(source_folder, out_folder)
