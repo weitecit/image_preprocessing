@@ -12,6 +12,19 @@ mongo_str = 'mongodb+srv://admin:aSAa4hwn77FX5Ueg@weitec-db-dev.glav6.mongodb.ne
 client = pymongo.MongoClient(mongo_str)
 db = client['main']
 
+def retrieve_all_files(root_folder):
+    for root, dirs, files in os.walk(root_folder):
+        for archivo in files:
+            ruta_archivo = os.path.join(root, archivo)
+            ruta_nueva = os.path.join(root_folder, archivo)
+            os.replace(ruta_archivo, ruta_nueva)
+        if root != root_folder:
+            try:
+                os.rmdir(root)
+                print(f"Carpeta '{root}' borrada")
+            except OSError as e:
+                print(f"No se pudo borrar la carpeta '{root}': {e}")
+
 def get_image_list(image_folder):
     available_extensions = ['png', 'jpg', 'tif', 'tiff']
     files = []
@@ -20,7 +33,7 @@ def get_image_list(image_folder):
             files.append(file)
     return files
 
-def get_dataset_positions(image_folder):
+def get_dataset_positions(image_folder:str)->list[tuple]:
     positions = []
     
     for file in get_image_list(image_folder):
@@ -46,8 +59,7 @@ def get_dataset_gdf(image_folder:str)->gpd.GeoDataFrame:
     gdf = gpd.GeoDataFrame(metadata_list,geometry=points, crs="epsg:4326")
     return gdf
 
-def detect_plots(image_folder)->list[dict]:
-    positions = get_dataset_positions(image_folder)
+def detect_plots(positions:list[tuple])->list[dict]:
 
     #Find in mongo by Intersection
     geometries = [{'type': 'Point', 'coordinates': list(position)} for position in positions]
@@ -59,11 +71,14 @@ def detect_plots(image_folder)->list[dict]:
     return list(db.plots.find(query))
 
 
-def detect_fields_and_divide(image_folder:str, out_folder:str, buffer_size:float=50)->list:
+def detect_fields_and_divide(image_folder:str, out_folder:str, buffer_size:float=50, positions:list[tuple]=None)->list:
     image_list = get_image_list(image_folder)
 
     #get plots as gdf
-    plots_list = detect_plots(image_folder)
+    if positions is None:
+        positions = get_dataset_positions(image_folder)
+
+    plots_list = detect_plots(positions)
     properties = [x['properties'] for x in plots_list]
     geometries = [shape(x['geometry']) for x in plots_list]
 
@@ -141,7 +156,5 @@ def select_unique_multispectral_images(image_list):
 
 
 if __name__ == '__main__':
-    source_folder = r"C:\Users\Daniel_Arcos\Desktop\DJI_202506091548_174_Agricultura-agriauto-cabrera"
-    out_folder = r"C:\Users\Daniel_Arcos\Desktop\out_folder"
-
-    detect_fields_and_divide(source_folder, out_folder)
+    import sys
+    fields_and_cluster_division(sys.argv[1], sys.argv[2])
