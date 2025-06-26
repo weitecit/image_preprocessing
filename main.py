@@ -35,6 +35,7 @@ def get_image_list(image_folder:str)->list[str]:
         if file.split('.')[-1].lower() in available_extensions:
             files.append(file)
     return files
+
 def get_image_paths(root_folder:str)->list[str]:
     image_list =[]
 
@@ -84,59 +85,59 @@ def detect_plots(positions:list[tuple])->list[dict]:
     return list(db.plots.find(query))
 
 
-def detect_fields_and_divide(image_folder:str, out_folder:str, buffer_size:float=50, positions:list[tuple]=None)->list:
-    image_list = get_image_paths(image_folder)
-
+def detect_fields_and_divide(image_folder:str, out_folder:str, buffer_size:float=50, metadada_gdf:gpd.GeoDataFrame=None)->list:
     #get plots as gdf
-    if positions is None:
-        positions = get_dataset_positions(image_folder)
+    if metadada_gdf is None:
+        metadada_gdf = get_dataset_gdf(image_folder)
 
-    plots_list = detect_plots(positions)
+    plots_list = detect_plots(metadada_gdf['position'].to_list())
     properties = [x['properties'] for x in plots_list]
     geometries = [shape(x['geometry']) for x in plots_list]
 
-    gdf = gpd.GeoDataFrame(properties,  geometry=geometries, crs="epsg:4326")
-    tr_gdf = gdf.to_crs(epsg=3857).buffer(buffer_size)
+    plots_gdf = gpd.GeoDataFrame(properties,  geometry=geometries, crs="epsg:4326")
+    tr_gdf = plots_gdf.to_crs(epsg=3857).buffer(buffer_size)
 
-    print(f'Detected fields: {gdf["field"].unique()}')
+    print(f'Detected fields: {plots_gdf["field"].unique()}')
 
     tr = Transformer.from_crs("epsg:4326", "epsg:3857", always_xy=True)
 
     images_out_of_bounds = []
-    out_folders = set()
-    for image in image_list:
-        metadata = Relevant_metadata(image, process_sunshine=False)
-        position = metadata.position
-        image_name = os.path.basename(image)
+    deleted_rows = []
+    for i, image in metadada_gdf.iterrows():
+        position = image.position
+        image_name = os.path.basename(image.path)
 
         #tranform coordinates and intersect
         x, y = tr.transform(position[0], position[1])
         tr_point = Point(x, y)
        
         mask = tr_gdf.intersects(tr_point)
-        detected_fields_in_point = gdf[mask]['field'].unique()
+        detected_fields_in_point = plots_gdf[mask]['field'].unique()
         
         if len(detected_fields_in_point) == 0:
-            images_out_of_bounds.append(image)
+            images_out_of_bounds.append(image.path)
+            deleted_rows.append(i)
             continue
 
         #copy to folder
         for field in detected_fields_in_point:
-            new_folder_name = f'W{metadata.datetime.isocalendar()[1]}_{field}_{metadata.image_type}_{len(image_list)}'
-            out_folders.add(new_folder_name)
+            new_folder_name = f'W{image.datetime.isocalendar()[1]}_{field}_{image.image_type}'
             if not os.path.exists(os.path.join(out_folder, new_folder_name)):
                 os.makedirs(os.path.join(out_folder, new_folder_name))
-            
             try:
                 out_image = os.path.join(out_folder, new_folder_name, image_name)
-                shutil.copy2(image, out_image)
+                shutil.copy2(image.path, out_image)
+                image['path'] = out_image
             except PermissionError as e:
-                print(f"No se pudo copiar la imagen '{image}': {e}")
-                print(out_image)
+                print(f"No se pudo copiar la imagen '{image.path}': {e}")
+                deleted_rows.append(i)
                 continue
 
     print(f'Images out of bounds: {len(images_out_of_bounds)}')
-    return out_folders
+    print(f'Images deleted: {len(deleted_rows)}')
+
+    metadada_gdf = metadada_gdf.drop(deleted_rows)
+    return metadada_gdf
 
 def fields_and_cluster_division(image_folder:str, out_folder:str, buffer_size:float=50, max_images:int=1000):
     """
@@ -161,25 +162,28 @@ def fields_and_cluster_division(image_folder:str, out_folder:str, buffer_size:fl
         None
     """
 
-    sub_folders = detect_fields_and_divide(image_folder, out_folder, buffer_size)
+    print('Obtaining dataset metadata...')
+    metadata_gdf = get_dataset_gdf(image_folder)
+    metadata_gdf = detect_fields_and_divide(image_folder, out_folder, buffer_size, metadada_gdf=metadata_gdf)
     #TODO optimizar: en imágenes multiespectrales, trabajar solo con una sola banda
-    #TODO optimizar: obtiene las posiciones en varias ocasiones
+    
+    sub_folders = metadata_gdf['path'].apply(lambda x: os.path.dirname(x)).unique()
     for sub in sub_folders:
         print(f'Processing: {sub}')
-        image_list = get_image_paths(os.path.join(out_folder, sub))
+        image_list = get_image_paths(sub)
         print(f'Images: {len(image_list)}')
-        positions = get_dataset_positions(os.path.join(out_folder, sub))
+        positions = get_dataset_positions(sub)
         clustering = full_clustering(positions, max_images=max_images)
         total_arr = np.column_stack((clustering, image_list))
         
         for cluster in np.unique(clustering[:, 2]):
             cluster_arr = total_arr[clustering[:, 2] == cluster]
-            cluster_folder = os.path.join(out_folder, sub, f'Cluster_{int(cluster)}')
+            cluster_folder = os.path.join(sub, f'Cluster_{int(cluster)}')
             #move images
             os.makedirs(cluster_folder, exist_ok=True)
             for image in cluster_arr[:, 3]:
                 image_name = os.path.basename(image)
-                out_image = os.path.join(out_folder, sub, cluster_folder, image_name)
+                out_image = os.path.join(cluster_folder, image_name)
                 os.replace(image, out_image)
     print('DONE')
 
@@ -194,26 +198,6 @@ def select_unique_multispectral_images(image_list):
             main_names.append(image)
 
     return main_names
-
-def flat_folder_structure(directory:str, omited_folders:list=['.thumbs'])->None:
-
-    for root, dirs, files in os.walk(directory, topdown=False):
-        #check if in omited folders
-        if any(omit in root for omit in omited_folders):
-            continue
-        
-        #move files
-        for archivo in files:
-            ruta_archivo = os.path.join(root, archivo)
-            ruta_nueva = os.path.join(directory, archivo)
-            os.replace(ruta_archivo, ruta_nueva)
-        #delete empty folders
-        if root != directory:
-            try:
-                os.rmdir(root)
-                print(f"Carpeta '{root}' borrada")
-            except OSError as e:
-                print(f"No se pudo borrar la carpeta '{root}': {e}")
 
 if __name__ == '__main__':
     import sys
