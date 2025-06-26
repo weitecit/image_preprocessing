@@ -13,7 +13,7 @@ client = pymongo.MongoClient(mongo_str)
 db = client['main']
 
 available_extensions = ['png', 'jpg', 'tif', 'tiff']
-omited_folders = ['.thumb']
+omited_folders = ['.thumb', '.thumbs']
 
 def retrieve_all_files(root_folder):
     for root, dirs, files in os.walk(root_folder):
@@ -127,19 +127,19 @@ def detect_fields_and_divide(image_folder:str, out_folder:str, buffer_size:float
             try:
                 out_image = os.path.join(out_folder, new_folder_name, image_name)
                 shutil.copy2(image.path, out_image)
-                image['path'] = out_image
+                metadada_gdf.at[i, 'path'] = out_image
             except PermissionError as e:
                 print(f"No se pudo copiar la imagen '{image.path}': {e}")
                 deleted_rows.append(i)
                 continue
 
-    print(f'Images out of bounds: {len(images_out_of_bounds)}')
-    print(f'Images deleted: {len(deleted_rows)}')
+    print(f'Images with errors: {len(deleted_rows)}')
+    print(f'\t out of bounds: {len(images_out_of_bounds)}')
 
     metadada_gdf = metadada_gdf.drop(deleted_rows)
     return metadada_gdf
 
-def fields_and_cluster_division(image_folder:str, out_folder:str, buffer_size:float=50, max_images:int=1000):
+def fields_and_cluster_division(image_folder:str, out_folder:str, buffer_size:float=50, max_images:int=1500):
     """
     Processes images by detecting fields, dividing them into clusters, and organizing them into subdirectories.
 
@@ -166,7 +166,6 @@ def fields_and_cluster_division(image_folder:str, out_folder:str, buffer_size:fl
     metadata_gdf = get_dataset_gdf(image_folder)
     metadata_gdf = detect_fields_and_divide(image_folder, out_folder, buffer_size, metadada_gdf=metadata_gdf)
     #TODO optimizar: en imágenes multiespectrales, trabajar solo con una sola banda
-    
     sub_folders = metadata_gdf['path'].apply(lambda x: os.path.dirname(x)).unique()
     for sub in sub_folders:
         print(f'Processing: {sub}')
@@ -202,3 +201,6 @@ def select_unique_multispectral_images(image_list):
 if __name__ == '__main__':
     import sys
     fields_and_cluster_division(sys.argv[1], sys.argv[2])
+    #TODO: mover originales en vez de copiar
+    #TODO: guardar imágenes ouut of bounds o errores
+    #TODO: comprobar imágenes multiespectrales
