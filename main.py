@@ -1,4 +1,4 @@
-from image_data import Relevant_metadata
+from Image_data import Relevant_metadata
 import pymongo
 import os
 import shutil
@@ -97,7 +97,10 @@ def detect_fields_and_divide(image_folder:str, out_folder:str, buffer_size:float
     plots_gdf = gpd.GeoDataFrame(properties,  geometry=geometries, crs="epsg:4326")
     tr_gdf = plots_gdf.to_crs(epsg=3857).buffer(buffer_size)
 
-    print(f'Detected fields: {plots_gdf["field"].unique()}')
+    if "field" in plots_gdf.columns:
+        print(f'Detected fields: {plots_gdf["field"].unique()}')
+    else:
+        print("Warning: 'field' column not found in plots_gdf. Cannot display detected fields.")
 
     tr = Transformer.from_crs("epsg:4326", "epsg:3857", always_xy=True)
 
@@ -119,7 +122,7 @@ def detect_fields_and_divide(image_folder:str, out_folder:str, buffer_size:float
             deleted_rows.append(i)
             continue
 
-        #copy to folder
+        #copy to folder/folders
         for field in detected_fields_in_point:
             new_folder_name = f'W{image.datetime.isocalendar()[1]}_{field}_{image.image_type}'
             if not os.path.exists(os.path.join(out_folder, new_folder_name)):
@@ -132,6 +135,8 @@ def detect_fields_and_divide(image_folder:str, out_folder:str, buffer_size:float
                 print(f"No se pudo copiar la imagen '{image.path}': {e}")
                 deleted_rows.append(i)
                 continue
+            
+        os.remove(image.path) # Delete the original image after successful copy
 
     print(f'Images with errors: {len(deleted_rows)}')
     print(f'\t out of bounds: {len(images_out_of_bounds)}')
